@@ -1,0 +1,27 @@
+[package]
+name = "chatchain"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+eyre = "0.6"
+tracing = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# HTTP API
+axum = "0.6"
+tower = "0.4"
+tower-http = { version = "0.4", features = ["trace"] }
+
+# Database
+redb = "2.4"
+
+# Logging
+tracing-subscriber = "0.3"
+
+# Added for multi-node testnet support
+clap = { version = "4.4", features = ["derive"] }
+reqwest = { version = "0.11", features = ["json"] }
