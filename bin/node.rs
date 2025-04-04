@@ -546,7 +546,7 @@ async fn main() -> EyreResult<()> {
     }
 
     // Create a separate database file for each node
-    let db_file = db_path.join(format!("messages_{}.redb", node_id));
+    let db_file = db_path.join(format!("node_{}.redb", node_id));
     info!("Using database file: {}", db_file.display());
 
     // Create shared app state
