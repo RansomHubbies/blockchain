@@ -1,0 +1,36 @@
+[client]
+bind_addr = "0.0.0.0:8080"
+request_timeout_ms = 5000  # Timeout for requests to nodes (in milliseconds)
+
+[nodes]
+addresses = [
+    "127.0.0.1:8081",
+    "127.0.0.1:8082",
+    "127.0.0.1:8083",
+    "127.0.0.1:8084"
+]
+
+# Individual node configurations
+[[node_config]]
+id = 0
+base_port = 8081
+ip = "0.0.0.0"
+peers = "127.0.0.1:8082,127.0.0.1:8083,127.0.0.1:8084"
+
+[[node_config]]
+id = 1
+base_port = 8082
+ip = "0.0.0.0"
+peers = "127.0.0.1:8081,127.0.0.1:8083,127.0.0.1:8084"
+
+[[node_config]]
+id = 2
+base_port = 8083
+ip = "0.0.0.0"
+peers = "127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8084"
+
+[[node_config]]
+id = 3
+base_port = 8084
+ip = "0.0.0.0"
+peers = "127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8083"

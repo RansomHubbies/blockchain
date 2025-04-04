@@ -1,120 +1,108 @@
-# ChatChain
+# ChatChain - Distributed Chat Message System
 
-A simple blockchain-based chat application built with Rust.
-
-## Overview
-
-ChatChain is a simplified implementation that demonstrates how to store chat messages on a blockchain. It provides:
-
-- A mempool for storing pending messages
-- A simple commit mechanism (simulating blockchain consensus)
-- JSON serialization for messages
-- A persistent database using redb for storing committed messages
-- A REST API for interacting with the application
-- Support for a multi-node testnet
+This is a simple distributed chat system that demonstrates network resilience with multiple nodes. The client proxies requests to available nodes, providing fault tolerance.
 
 ## Project Structure
 
-The application consists of the following components:
+- `bin/node.rs` - Individual chat nodes that store and sync messages
+- `bin/client.rs` - Client API that forwards requests to nodes
+- `config.toml` - Configuration for both client and nodes
 
-- `ChatMessage` and `ChatValue`: Data structures for representing messages and blocks
-- `Mempool`: An in-memory storage for pending messages
-- `State`: The application state that manages the mempool and committed messages
-- `Database`: A persistent store for committed messages using redb
-- HTTP endpoints for pushing messages, committing blocks, and retrieving messages
-- P2P communication for syncing messages across nodes
+## Dependencies
+
+Add these dependencies to your Cargo.toml:
+
+```toml
+[dependencies]
+axum = "0.6.0"
+clap = { version = "4.0.0", features = ["derive"] }
+eyre = "0.6.0"
+redb = "1.0.0"  
+reqwest = { version = "0.11.0", features = ["json"] }
+serde = { version = "1.0.0", features = ["derive"] }
+serde_json = "1.0.0"
+tokio = { version = "1.0.0", features = ["full"] }
+toml = "0.7.0"
+tracing = "0.1.0"
+tracing-subscriber = "0.3.0"
+```
+
+## Running the System
+
+### Start the Nodes
+
+Start multiple nodes to create a resilient network. Each node needs a unique ID:
+
+```bash
+# Node 0
+cargo run --bin node -- --node-id 0 --peers "127.0.0.1:8082,127.0.0.1:8083,127.0.0.1:8084"
+
+# Node 1
+cargo run --bin node -- --node-id 1 --peers "127.0.0.1:8081,127.0.0.1:8083,127.0.0.1:8084"
+
+# Node 2
+cargo run --bin node -- --node-id 2 --peers "127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8084"
+
+# Node 3  
+cargo run --bin node -- --node-id 3 --peers "127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8083"
+```
+
+### Start the Client
+
+The client will read configuration from `config.toml` and forward requests to available nodes:
+
+```bash
+cargo run --bin client
+```
 
 ## API Endpoints
 
-- `POST /mempool/push`: Push a new message to the mempool
-- `POST /commit`: Commit all messages in the mempool to the blockchain
-- `GET /messages`: Retrieve all committed messages
-- `GET /nodes`: Get information about the current node
-- `POST /mempool/sync`: Internal endpoint for node synchronization
+### Client Endpoints
 
-## Building and Running
+The client API exposes the following endpoints:
 
-```bash
-# Build the project
-cargo build
+- `POST /messages` - Send a new chat message
+- `GET /messages` - Get all chat messages
+- `GET /network` - Get network status
 
-# Run a single node
-cargo run
+### Node Endpoints
+
+Each node exposes:
+
+- `POST /messages` - Send a new chat message
+- `GET /messages` - Get all chat messages
+- `POST /sync` - Internal endpoint for node synchronization
+- `GET /nodes` - Get node information
+
+## Message Format
+
+To send a message:
+
+```json
+{
+  "sender": "user1",
+  "recipient": "user2",
+  "text": "Hello world!",
+  "timestamp": 1697913600
+}
 ```
 
-## Running a Testnet
+## Fault Tolerance
 
-ChatChain supports running a local testnet with multiple nodes. By default, it's configured for a 4-node testnet:
+The system is designed to be resilient:
 
-```bash
-# Run node 0 (default port: 8081)
-cargo run -- --node-id 0
+1. The client tries each node until it gets a successful response
+2. Nodes sync messages with each other periodically
+3. Even if some nodes are down, the system continues to work as long as at least one node is available
 
-# Run node 1 (port: 8082)
-cargo run -- --node-id 1
+## How It Works
 
-# Run node 2 (port: 8083)
-cargo run -- --node-id 2
+1. Messages are stored in a local database (redb) on each node 
+2. Nodes sync messages with each other in the background
+3. The client forwards requests to all nodes and returns the first successful response
+4. If any node is up, the client can still successfully process requests
 
-# Run node 3 (port: 8084)
-cargo run -- --node-id 3
-```
-
-You can customize the base port and IP address:
-
-```bash
-# Run node 0 with custom base port
-cargo run -- --node-id 0 --base-port 9000
-
-# Run node 1 with custom base port
-cargo run -- --node-id 1 --base-port 9000
-```
-
-Each node will:
-- Listen on a different port (base_port + node_id)
-- Store data in a separate database file
-- Automatically sync with other nodes in the network
-
-## API Usage Examples
-
-### Add a message to the mempool (to any node)
-
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"sender": "Alice", "recipient": "Bob", "text": "Hello, blockchain chat!", "timestamp": 1619827200}' \
-  http://localhost:8081/mempool/push
-```
-
-### Commit messages from mempool to blockchain
-
-```bash
-curl -X POST http://localhost:8081/commit
-```
-
-### Get all committed messages (from any node)
-
-```bash
-curl http://localhost:8081/messages
-```
-
-### Get node information
-
-```bash
-curl http://localhost:8081/nodes
-```
-
-## Persistence
-
-Messages committed to the blockchain are stored in a persistent database using redb. The database files are stored in the `chatchain_db` directory with names like `messages_0.redb` for node 0. This ensures that messages are preserved even if the application is restarted.
-
-## Implementation Notes
-
-This is a simplified implementation that demonstrates the core concepts without the complexity of a full blockchain consensus implementation. In a real-world scenario, you would:
-
-1. Use a distributed consensus algorithm like Malachite BFT for agreeing on the chain state
-2. Implement proper blockchain data structures with blocks and transactions
-3. Add signature verification for message authenticity
-4. Implement more robust peer-to-peer networking for distributed operation
+This design demonstrates a simple way to build distributed systems with redundancy and fault tolerance.
 
 ## License
 

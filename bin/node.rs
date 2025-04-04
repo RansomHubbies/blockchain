@@ -67,6 +67,22 @@ pub struct NodeConfig {
     pub id: usize,
     pub bind_addr: SocketAddr,
     pub peers: Vec<SocketAddr>,
+    pub external_addr: Option<SocketAddr>, // For when the node's advertised address differs from bind_addr
+}
+
+// Node configuration from config.toml
+#[derive(Clone, Debug, Deserialize)]
+struct NodeConfigFile {
+    id: usize,
+    base_port: u16,
+    ip: String,
+    peers: String,
+    external_addr: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ConfigFile {
+    node_config: Vec<NodeConfigFile>,
 }
 
 pub struct Mempool {
@@ -188,11 +204,16 @@ async fn send_message(
     };
 
     let node_id;
+    let peers;
+    let http_client;
 
     // Add to mempool and persist to local DB
     {
         let mut st = state.lock().await;
         node_id = st.node_config.id;
+        peers = st.node_config.peers.clone();
+        http_client = st.http_client.clone();
+        
         st.mempool.push(message.clone());
         debug!(
             "Node {}: Added message from {} to {}",
@@ -208,14 +229,9 @@ async fn send_message(
 
     // Immediately broadcast to peers (synchronous attempt)
     {
-        let st = state.lock().await;
-        let peers = st.node_config.peers.clone();
-        let http_client = st.http_client.clone();
-        drop(st); // Release the lock before sending requests
-
         for peer_addr in peers {
-            // Skip if peer is ourselves
-            if peer_addr.port() == (8081 + node_id as u16) {
+            // Skip if peer is ourselves - using node_id comparison
+            if is_self_addr(&peer_addr, state.clone()).await {
                 continue;
             }
 
@@ -273,6 +289,30 @@ async fn send_message(
         "status": "success",
         "node_id": node_id
     })))
+}
+
+// Helper function to determine if an address is this node's address
+async fn is_self_addr(addr: &SocketAddr, state: Arc<Mutex<ChainState>>) -> bool {
+    let st = state.lock().await;
+    
+    // Check against external address if available
+    if let Some(external) = &st.node_config.external_addr {
+        return addr == external;
+    }
+    
+    // Check against bind address
+    if addr == &st.node_config.bind_addr {
+        return true;
+    }
+    
+    // Handle localhost variations
+    if (addr.ip().is_loopback() || addr.ip().is_unspecified()) && 
+       st.node_config.bind_addr.ip().is_loopback() &&
+       addr.port() == st.node_config.bind_addr.port() {
+        return true;
+    }
+    
+    false
 }
 
 /// POST /sync - Internal endpoint for peers to sync messages with us
@@ -388,8 +428,34 @@ struct Args {
     base_port: u16,
 
     /// IP address to bind to
-    #[clap(short, long, default_value = "127.0.0.1")]
+    #[clap(short, long, default_value = "0.0.0.0")]
     ip: String,
+    
+    /// Comma-separated list of peer addresses (host:port)
+    #[clap(long)]
+    peers: String,
+    
+    /// External address that other nodes should use to connect to this node (host:port)
+    #[clap(long)]
+    external_addr: Option<String>,
+
+    /// Use config file instead of command line arguments
+    #[clap(long)]
+    use_config: bool,
+}
+
+// Function to load config from file
+fn load_config_for_node(node_id: usize) -> EyreResult<NodeConfigFile> {
+    // Read config.toml
+    let config_content = std::fs::read_to_string("config.toml")?;
+    
+    // Parse the TOML
+    let config: ConfigFile = toml::from_str(&config_content)?;
+    
+    // Find the configuration for our node ID
+    config.node_config.into_iter()
+        .find(|cfg| cfg.id == node_id)
+        .ok_or_else(|| eyre::eyre!("No configuration found for node ID {}", node_id))
 }
 
 // Main function
@@ -401,34 +467,75 @@ async fn main() -> EyreResult<()> {
     // Parse command line arguments
     let args = Args::parse();
 
+    // Node configuration
+    let mut node_id = args.node_id;
+    let mut bind_port = args.base_port + args.node_id as u16;
+    let mut ip_addr_str = args.ip.clone();
+    let mut peers_str = args.peers.clone();
+    let mut external_addr_str = args.external_addr.clone();
+
+    // Use config file if requested
+    if args.use_config {
+        match load_config_for_node(args.node_id) {
+            Ok(config) => {
+                info!("Using configuration from config.toml for node {}", args.node_id);
+                node_id = config.id;
+                bind_port = config.base_port;
+                ip_addr_str = config.ip;
+                peers_str = config.peers;
+                external_addr_str = config.external_addr;
+            },
+            Err(e) => {
+                warn!("Could not load config from file: {}", e);
+                warn!("Falling back to command line arguments");
+            }
+        }
+    }
+
     // Parse IP address
-    let ip_addr: IpAddr = args
-        .ip
+    let ip_addr: IpAddr = ip_addr_str
         .parse()
-        .unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
 
     // Configure this node
-    let bind_port = args.base_port + args.node_id as u16;
     let bind_addr = SocketAddr::new(ip_addr, bind_port);
+    
+    // Parse external address if provided
+    let external_addr = if let Some(addr_str) = external_addr_str {
+        match addr_str.parse() {
+            Ok(addr) => Some(addr),
+            Err(e) => {
+                warn!("Invalid external address format: {}, error: {}", addr_str, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
-    // Set up peer list (all nodes in the testnet)
+    // Set up peer list
     let mut peers = Vec::new();
-    for i in 0..4 {
-        let peer_port = args.base_port + i as u16;
-        peers.push(SocketAddr::new(ip_addr, peer_port));
+    for peer_str in peers_str.split(',') {
+        if !peer_str.trim().is_empty() {
+            match peer_str.trim().parse() {
+                Ok(addr) => peers.push(addr),
+                Err(e) => warn!("Invalid peer address format: {}, error: {}", peer_str, e),
+            }
+        }
     }
 
     let node_config = NodeConfig {
-        id: args.node_id,
+        id: node_id,
         bind_addr,
         peers,
+        external_addr,
     };
 
     // Print a separator line
     info!("====================================================================");
-    info!("STARTING CHATCHAIN TESTNET NODE {}", args.node_id);
+    info!("STARTING CHATCHAIN TESTNET NODE {}", node_id);
     info!("====================================================================");
-    info!("Node {} binding to {}", args.node_id, bind_addr);
+    info!("Node {} binding to {}", node_id, bind_addr);
     info!("Peers: {:?}", node_config.peers);
     info!("====================================================================");
 
@@ -439,7 +546,7 @@ async fn main() -> EyreResult<()> {
     }
 
     // Create a separate database file for each node
-    let db_file = db_path.join(format!("messages_{}.redb", args.node_id));
+    let db_file = db_path.join(format!("messages_{}.redb", node_id));
     info!("Using database file: {}", db_file.display());
 
     // Create shared app state
@@ -462,7 +569,7 @@ async fn main() -> EyreResult<()> {
     // Serve Axum
     info!(
         "Node {} HTTP server listening on {}",
-        args.node_id, bind_addr
+        node_id, bind_addr
     );
     info!("====================================================================");
     axum::Server::bind(&bind_addr)
@@ -489,8 +596,8 @@ async fn sync_task(state: Arc<Mutex<ChainState>>) {
         debug!("Node {}: Starting sync with {} peers", node_id, peers.len());
 
         for peer_addr in &peers {
-            // Skip if peer is ourselves
-            if peer_addr.port() == (8081 + node_id as u16) {
+            // Skip if peer is ourselves, using the new helper function
+            if is_self_addr(&peer_addr, state.clone()).await {
                 continue;
             }
 

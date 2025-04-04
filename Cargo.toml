@@ -3,25 +3,23 @@ name = "chatchain"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "node"
+path = "bin/node.rs"
+
+[[bin]]
+name = "client"
+path = "bin/client.rs"
+
 [dependencies]
-# Core dependencies
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-eyre = "0.6"
-tracing = "0.1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
-# HTTP API
-axum = { version = "0.6", features = ["macros"] }
-tower = "0.4"
-tower-http = { version = "0.4", features = ["trace"] }
-
-# Database
-redb = "2.4"
-
-# Logging
-tracing-subscriber = "0.3"
-
-# Added for multi-node testnet support
-clap = { version = "4.4", features = ["derive"] }
-reqwest = { version = "0.11", features = ["json"] }
+axum = "0.6.0"
+clap = { version = "4.0.0", features = ["derive"] }
+eyre = "0.6.0"
+redb = "2.4.0"
+reqwest = { version = "0.11.0", features = ["json"] }
+serde = { version = "1.0.0", features = ["derive"] }
+serde_json = "1.0.0"
+tokio = { version = "1.0.0", features = ["full"] }
+toml = "0.7.0"
+tracing = "0.1.0"
+tracing-subscriber = "0.3.0"
