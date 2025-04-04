@@ -4,7 +4,7 @@
 set -e
 
 # Directory for chatchain database
-DB_DIR="chatchain_db"
+DB_DIR="db"
 
 # Create database directory if it doesn't exist
 if [ ! -d "$DB_DIR" ]; then
@@ -111,7 +111,7 @@ for (( i=0; i<$NODES; i++ )); do
   echo "Starting node $NODE_ID..."
   
   # Use cargo to start the node with the config file
-  cargo run --bin node -- --node-id $NODE_ID --use-config &
+  cargo run --bin node -- --node-id $NODE_ID &
   
   # Store the process ID for later
   NODE_PIDS[$i]=$!

@@ -17,7 +17,7 @@ To start the testnet with 4 nodes and a client, simply run:
 ```
 
 This will:
-1. Create a `chatchain_db` directory if it doesn't exist
+1. Create a `db` directory if it doesn't exist
 2. Kill any existing node or client processes
 3. Clean up any existing database files
 4. Generate a `config.toml` file for the testnet configuration

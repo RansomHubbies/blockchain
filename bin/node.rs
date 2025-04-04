@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -415,35 +415,6 @@ async fn get_nodes(
     })))
 }
 
-// Command line arguments
-#[derive(Parser, Debug)]
-#[clap(author, version, about)]
-struct Args {
-    /// Node ID (0-3 for a 4-node testnet)
-    #[clap(short, long, default_value = "0")]
-    node_id: usize,
-
-    /// Base port number (each node will use base_port + node_id)
-    #[clap(short, long, default_value = "8081")]
-    base_port: u16,
-
-    /// IP address to bind to
-    #[clap(short, long, default_value = "0.0.0.0")]
-    ip: String,
-    
-    /// Comma-separated list of peer addresses (host:port)
-    #[clap(long)]
-    peers: String,
-    
-    /// External address that other nodes should use to connect to this node (host:port)
-    #[clap(long)]
-    external_addr: Option<String>,
-
-    /// Use config file instead of command line arguments
-    #[clap(long)]
-    use_config: bool,
-}
-
 // Function to load config from file
 fn load_config_for_node(node_id: usize) -> EyreResult<NodeConfigFile> {
     // Read config.toml
@@ -458,44 +429,32 @@ fn load_config_for_node(node_id: usize) -> EyreResult<NodeConfigFile> {
         .ok_or_else(|| eyre::eyre!("No configuration found for node ID {}", node_id))
 }
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about)]
+struct Args {
+    /// Node ID (0-3 for a 4-node testnet)
+    #[clap(short, long, default_value = "0")]
+    node_id: usize,
+}
+
 // Main function
 #[tokio::main]
 async fn main() -> EyreResult<()> {
     // Initialize logging
     tracing_subscriber::fmt().init();
 
-    // Parse command line arguments
+    // Load config for node
     let args = Args::parse();
+    let config = load_config_for_node(args.node_id).unwrap();
 
     // Node configuration
-    let mut node_id = args.node_id;
-    let mut bind_port = args.base_port + args.node_id as u16;
-    let mut ip_addr_str = args.ip.clone();
-    let mut peers_str = args.peers.clone();
-    let mut external_addr_str = args.external_addr.clone();
+    let node_id = config.id;
+    let bind_port = config.base_port; // Will be set from config or CLI
+    let ip_addr_str = config.ip; // Default
+    let peers_str = config.peers; // Default empty
+    let external_addr_str = config.external_addr; // Default none
 
-    // Use config file if requested
-    if args.use_config {
-        match load_config_for_node(args.node_id) {
-            Ok(config) => {
-                info!("Using configuration from config.toml for node {}", args.node_id);
-                node_id = config.id;
-                bind_port = config.base_port;
-                ip_addr_str = config.ip;
-                peers_str = config.peers;
-                external_addr_str = config.external_addr;
-            },
-            Err(e) => {
-                warn!("Could not load config from file: {}", e);
-                warn!("Falling back to command line arguments");
-            }
-        }
-    }
-
-    // Parse IP address
-    let ip_addr: IpAddr = ip_addr_str
-        .parse()
-        .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+    let ip_addr = ip_addr_str.parse().unwrap();
 
     // Configure this node
     let bind_addr = SocketAddr::new(ip_addr, bind_port);
@@ -540,7 +499,7 @@ async fn main() -> EyreResult<()> {
     info!("====================================================================");
 
     // Create database directory if it doesn't exist
-    let db_path = Path::new("chatchain_db");
+    let db_path = Path::new("db");
     if !db_path.exists() {
         std::fs::create_dir_all(db_path)?;
     }

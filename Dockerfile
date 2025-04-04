@@ -24,7 +24,7 @@ WORKDIR /app
 COPY --from=builder /usr/src/chatchain/target/release/malachite-test /app/chatchain
 
 # Create directory for the database files
-RUN mkdir -p /app/chatchain_db
+RUN mkdir -p /app/db
 
 # Expose ports for the 4-node testnet
 EXPOSE 8081 8082 8083 8084
