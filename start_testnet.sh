@@ -3,6 +3,12 @@
 # exit script on any error
 set -e
 
+# Load environment variables if needed
+# source ~/.profile
+
+# Change to the project directory
+cd /home/iiitd/blockchain
+
 # Directory for chatchain database
 DB_DIR="db"
 
@@ -11,12 +17,6 @@ if [ ! -d "$DB_DIR" ]; then
   echo "Creating database directory: $DB_DIR"
   mkdir -p "$DB_DIR"
 fi
-
-# Function to check if a port is in use
-is_port_in_use() {
-  lsof -i :"$1" >/dev/null 2>&1
-  return $?
-}
 
 # Function to wait for a node to be ready
 wait_for_node() {
@@ -41,14 +41,10 @@ wait_for_node() {
   return 0
 }
 
-# Kill any existing node processes
-echo "Stopping any existing nodes and client processes..."
+# Kill any existing node processes if they exist
+echo "Checking for existing nodes and client processes..."
 pkill -f "cargo run --bin node" >/dev/null 2>&1 || true
 pkill -f "cargo run --bin client" >/dev/null 2>&1 || true
-
-# Clean up existing database files before starting
-echo "Cleaning up database files..."
-rm -f "$DB_DIR"/*.redb
 
 # Node configuration
 NODES=4
@@ -106,6 +102,7 @@ done
 echo "Config file generated."
 
 # Start the nodes
+declare -a NODE_PIDS
 for (( i=0; i<$NODES; i++ )); do
   NODE_ID=$i
   echo "Starting node $NODE_ID..."
@@ -146,22 +143,7 @@ for (( i=0; i<$NODES; i++ )); do
   echo "  Node $i: http://localhost:$PORT"
 done
 echo "======================================================================"
-echo "Press Ctrl+C to shut down the testnet"
-echo ""
 
-# Function to clean up when script is terminated
-cleanup() {
-  echo "Shutting down testnet..."
-  kill $CLIENT_PID 2>/dev/null || true
-  for pid in "${NODE_PIDS[@]}"; do
-    kill $pid 2>/dev/null || true
-  done
-  echo "Testnet shut down."
-  exit 0
-}
-
-# Set up trap for clean shutdown
-trap cleanup INT TERM
-
-# Wait for all background processes
+# For systemd, we don't need the cleanup function, as systemd manages the service lifecycle
+# Just wait for all background processes
 wait 

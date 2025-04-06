@@ -1,0 +1,16 @@
+[Unit]
+Description=Blockchain Service
+After=network.target
+
+[Service]
+Type=simple
+User=iiitd
+WorkingDirectory=/home/iiitd/blockchain
+ExecStart=/home/iiitd/blockchain/start_testnet_service.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target 
