@@ -70,7 +70,7 @@ async fn send_message(
     for addr in node_addrs {
         debug!("Sending message to node at {}", addr);
         let url = format!("http://{}/messages", addr);
-        
+
         match state.http_client.post(&url).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
@@ -95,7 +95,7 @@ async fn send_message(
             }
         }
     }
-    
+
     if successful_responses.is_empty() {
         error!("Failed to send message to any node");
         return Err(axum::http::StatusCode::SERVICE_UNAVAILABLE);
@@ -104,7 +104,7 @@ async fn send_message(
     // Return the first successful response
     let (node_addr, response) = &successful_responses[0];
     debug!("Got successful response from node {}", node_addr);
-    
+
     // Add client metadata to the response
     let mut response_with_metadata = response.clone();
     if let serde_json::Value::Object(ref mut map) = response_with_metadata {
@@ -134,7 +134,7 @@ async fn get_messages(
     for addr in node_addrs {
         debug!("Getting messages from node at {}", addr);
         let url = format!("http://{}/messages", addr);
-        
+
         match state.http_client.get(&url).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
@@ -159,7 +159,7 @@ async fn get_messages(
             }
         }
     }
-    
+
     error!("Failed to get messages from any node");
     Err(axum::http::StatusCode::SERVICE_UNAVAILABLE)
 }
@@ -169,13 +169,13 @@ async fn get_network_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     let node_addrs = &state.node_addresses;
-    
+
     // Check status of each node
     let mut node_statuses = Vec::new();
-    
+
     for (idx, addr) in node_addrs.iter().enumerate() {
         let url = format!("http://{}/nodes", addr);
-        
+
         match state.http_client.get(&url).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
@@ -196,7 +196,7 @@ async fn get_network_status(
             }
         }
     }
-    
+
     // Construct network status response
     let response = serde_json::json!({
         "network_size": node_addrs.len(),
@@ -209,7 +209,7 @@ async fn get_network_status(
             })
         }).collect::<Vec<_>>(),
     });
-    
+
     Ok(Json(response))
 }
 
@@ -220,21 +220,21 @@ async fn main() -> EyreResult<()> {
 
     // Load configuration from config.toml
     let config = load_config()?;
-    
+
     // Parse the bind address
     let bind_addr: SocketAddr = config.client.bind_addr.parse()?;
-    
+
     // Create HTTP client with appropriate timeout
     let http_client = HttpClient::builder()
         .timeout(Duration::from_millis(config.client.request_timeout_ms))
         .build()?;
-    
+
     // Create app state
     let app_state = Arc::new(AppState {
         node_addresses: config.nodes.addresses,
         http_client,
     });
-    
+
     // Print startup information
     info!("====================================================================");
     info!("STARTING CHATCHAIN CLIENT");
@@ -243,31 +243,31 @@ async fn main() -> EyreResult<()> {
     info!("Configured nodes: {:?}", app_state.node_addresses);
     info!("Request timeout: {} ms", config.client.request_timeout_ms);
     info!("====================================================================");
-    
+
     // Create Axum routes
     let app = Router::new()
         .route("/messages", post(send_message))
         .route("/messages", get(get_messages))
         .route("/network", get(get_network_status))
         .with_state(app_state);
-    
+
     // Start the server
     info!("Client HTTP server listening on {}", bind_addr);
     info!("====================================================================");
     axum::Server::bind(&bind_addr)
         .serve(app.into_make_service())
         .await?;
-    
+
     Ok(())
 }
 
 fn load_config() -> EyreResult<Config> {
     // Read config.toml
     let config_content = std::fs::read_to_string("config.toml")?;
-    
+
     // Parse the TOML into our Config struct
     // Note: Need to add toml = "0.x" to Cargo.toml
     let config: Config = toml::from_str(&config_content)?;
-    
+
     Ok(config)
 }

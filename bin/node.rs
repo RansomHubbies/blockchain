@@ -90,6 +90,12 @@ pub struct Mempool {
     seen_message_ids: HashSet<String>, // Track messages we've already seen
 }
 
+impl Default for Mempool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mempool {
     pub fn new() -> Self {
         Self {
@@ -213,7 +219,7 @@ async fn send_message(
         node_id = st.node_config.id;
         peers = st.node_config.peers.clone();
         http_client = st.http_client.clone();
-        
+
         st.mempool.push(message.clone());
         debug!(
             "Node {}: Added message from {} to {}",
@@ -294,24 +300,25 @@ async fn send_message(
 // Helper function to determine if an address is this node's address
 async fn is_self_addr(addr: &SocketAddr, state: Arc<Mutex<ChainState>>) -> bool {
     let st = state.lock().await;
-    
+
     // Check against external address if available
     if let Some(external) = &st.node_config.external_addr {
         return addr == external;
     }
-    
+
     // Check against bind address
     if addr == &st.node_config.bind_addr {
         return true;
     }
-    
+
     // Handle localhost variations
-    if (addr.ip().is_loopback() || addr.ip().is_unspecified()) && 
-       st.node_config.bind_addr.ip().is_loopback() &&
-       addr.port() == st.node_config.bind_addr.port() {
+    if (addr.ip().is_loopback() || addr.ip().is_unspecified())
+        && st.node_config.bind_addr.ip().is_loopback()
+        && addr.port() == st.node_config.bind_addr.port()
+    {
         return true;
     }
-    
+
     false
 }
 
@@ -419,12 +426,14 @@ async fn get_nodes(
 fn load_config_for_node(node_id: usize) -> EyreResult<NodeConfigFile> {
     // Read config.toml
     let config_content = std::fs::read_to_string("config.toml")?;
-    
+
     // Parse the TOML
     let config: ConfigFile = toml::from_str(&config_content)?;
-    
+
     // Find the configuration for our node ID
-    config.node_config.into_iter()
+    config
+        .node_config
+        .into_iter()
         .find(|cfg| cfg.id == node_id)
         .ok_or_else(|| eyre::eyre!("No configuration found for node ID {}", node_id))
 }
@@ -458,13 +467,16 @@ async fn main() -> EyreResult<()> {
 
     // Configure this node
     let bind_addr = SocketAddr::new(ip_addr, bind_port);
-    
+
     // Parse external address if provided
     let external_addr = if let Some(addr_str) = external_addr_str {
         match addr_str.parse() {
             Ok(addr) => Some(addr),
             Err(e) => {
-                warn!("Invalid external address format: {}, error: {}", addr_str, e);
+                warn!(
+                    "Invalid external address format: {}, error: {}",
+                    addr_str, e
+                );
                 None
             }
         }
@@ -526,10 +538,7 @@ async fn main() -> EyreResult<()> {
         .with_state(state);
 
     // Serve Axum
-    info!(
-        "Node {} HTTP server listening on {}",
-        node_id, bind_addr
-    );
+    info!("Node {} HTTP server listening on {}", node_id, bind_addr);
     info!("====================================================================");
     axum::Server::bind(&bind_addr)
         .serve(app.into_make_service())
@@ -556,7 +565,7 @@ async fn sync_task(state: Arc<Mutex<ChainState>>) {
 
         for peer_addr in &peers {
             // Skip if peer is ourselves, using the new helper function
-            if is_self_addr(&peer_addr, state.clone()).await {
+            if is_self_addr(peer_addr, state.clone()).await {
                 continue;
             }
 

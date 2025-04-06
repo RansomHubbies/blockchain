@@ -1,13 +1,16 @@
 #!/bin/bash
 
-# exit script on any error
-set -e
+# Don't exit script on any error - we want to continue even if some nodes fail
+# Removing the set -e line
+
+# Add path to cargo
+export PATH="$HOME/.cargo/bin:$PATH"
 
 # Load environment variables if needed
 # source ~/.profile
 
 # Change to the project directory
-cd /home/iiitd/blockchain
+cd "$(pwd)"
 
 # Directory for chatchain database
 DB_DIR="db"
@@ -107,6 +110,9 @@ echo "Config file generated."
 
 # Start the nodes
 declare -a NODE_PIDS
+declare -a ACTIVE_NODES
+SUCCESSFUL_NODES=0
+
 for (( i=0; i<$NODES; i++ )); do
   NODE_ID=$i
   echo "Starting node $NODE_ID..."
@@ -122,13 +128,24 @@ for (( i=0; i<$NODES; i++ )); do
   
   # Wait until the node is responsive
   NODE_PORT=$(($BASE_PORT + $i))
-  if ! wait_for_node $NODE_PORT; then
-    echo "Failed to start node $NODE_ID"
-    exit 1
+  if wait_for_node $NODE_PORT; then
+    echo "Node $NODE_ID started successfully!"
+    ACTIVE_NODES+=($i)
+    SUCCESSFUL_NODES=$((SUCCESSFUL_NODES + 1))
+  else
+    echo "Failed to start node $NODE_ID, continuing with other nodes..."
+    # Kill the failed node process
+    kill ${NODE_PIDS[$i]} 2>/dev/null || true
   fi
 done
 
-echo "All nodes started successfully!"
+# Check if at least one node started successfully
+if [ $SUCCESSFUL_NODES -eq 0 ]; then
+  echo "Error: No nodes started successfully. Exiting."
+  exit 1
+fi
+
+echo "$SUCCESSFUL_NODES out of $NODES nodes started successfully!"
 echo "Starting client..."
 
 # Start the client
@@ -139,12 +156,12 @@ CLIENT_PID=$!
 sleep 2
 
 echo "======================================================================"
-echo "Testnet is running with $NODES nodes and client"
+echo "Testnet is running with $SUCCESSFUL_NODES active nodes and client"
 echo "Client API available at: http://localhost:8080"
-echo "Node endpoints:"
-for (( i=0; i<$NODES; i++ )); do
-  PORT=$(($BASE_PORT + $i))
-  echo "  Node $i: http://localhost:$PORT"
+echo "Active node endpoints:"
+for node_id in "${ACTIVE_NODES[@]}"; do
+  PORT=$(($BASE_PORT + $node_id))
+  echo "  Node $node_id: http://localhost:$PORT"
 done
 echo "======================================================================"
 
