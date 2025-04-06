@@ -7,7 +7,7 @@ Follow these steps to set up your testnet as a systemd service that will automat
 Make the service script executable and copy it to your blockchain directory:
 
 ```bash
-chmod +x start_testnet_service.sh
+chmod +x start_testnet.sh
 ```
 
 ## 2. Install the systemd service

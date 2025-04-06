@@ -43,8 +43,12 @@ wait_for_node() {
 
 # Kill any existing node processes if they exist
 echo "Checking for existing nodes and client processes..."
-pkill -f "cargo run --bin node" >/dev/null 2>&1 || true
-pkill -f "cargo run --bin client" >/dev/null 2>&1 || true
+pkill -f "target/release/node" >/dev/null 2>&1 || true
+pkill -f "target/release/client" >/dev/null 2>&1 || true
+
+# Build binaries in release mode
+echo "Building binaries in release mode..."
+cargo build --release --bin node --bin client
 
 # Node configuration
 NODES=4
@@ -107,8 +111,8 @@ for (( i=0; i<$NODES; i++ )); do
   NODE_ID=$i
   echo "Starting node $NODE_ID..."
   
-  # Use cargo to start the node with the config file
-  cargo run --bin node -- --node-id $NODE_ID &
+  # Run the binary directly
+  ./target/release/node --node-id $NODE_ID &
   
   # Store the process ID for later
   NODE_PIDS[$i]=$!
@@ -128,7 +132,7 @@ echo "All nodes started successfully!"
 echo "Starting client..."
 
 # Start the client
-cargo run --bin client &
+./target/release/client &
 CLIENT_PID=$!
 
 # Wait for client to start
